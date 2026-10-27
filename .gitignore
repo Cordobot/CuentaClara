@@ -1,0 +1,23 @@
+# Gradle / build
+.gradle/
+.kotlin/
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+
+# Local configuration and secrets
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase emulators and real config
+*-debug.log
+.firebase/
+app/google-services.json

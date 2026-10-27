@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// Every rule requires a signed-in user; group data is visible only to its members.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(groupId) {
+      return signedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+    }
+
+    // Profile and FCM tokens: only the owner
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // invites/{code} -> { groupId }. Readable by code (get), never listable, so a group can
+    // only be found by someone who was given its code.
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.memberIds;
+    }
+
+    match /groups/{groupId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+
+      allow create: if signedIn() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.memberIds == [request.auth.uid];
+
+      // Members may rename the group; anyone signed in may add only themselves (joining)
+      allow update: if signedIn() && (
+        request.auth.uid in resource.data.memberIds ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'memberNames']) &&
+          request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
+          request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
+          request.auth.uid in request.resource.data.memberIds
+        )
+      );
+
+      match /expenses/{expenseId} {
+        allow read: if isMember(groupId);
+        allow create: if isMember(groupId) &&
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.amountCents is int &&
+          request.resource.data.amountCents > 0;
+        allow delete: if isMember(groupId) && resource.data.createdBy == request.auth.uid;
+      }
+    }
+  }
+}
